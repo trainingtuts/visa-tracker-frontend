@@ -21,6 +21,7 @@ export default function VisaTracker() {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
   const [error, setError] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -95,18 +96,35 @@ export default function VisaTracker() {
     return { approved, rejected, pending, interviewed, total: students.length };
   };
 
-  const calculateDays = (from, to) => {
-    if (!from || !to) return '-';
-    const d1 = new Date(from);
-    const d2 = new Date(to);
-    const days = Math.floor((d2 - d1) / (1000 * 60 * 60 * 24));
+  // Calculate days from today to interview date
+  const calculateDaysToInterview = (interviewDate) => {
+    if (!interviewDate) return '-';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const interview = new Date(interviewDate);
+    interview.setHours(0, 0, 0, 0);
+    const days = Math.ceil((interview - today) / (1000 * 60 * 60 * 24));
     return days >= 0 ? days : '-';
   };
 
-  const filteredStudents = students.filter(s =>
-    s.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.phone?.includes(searchQuery)
-  );
+  // Get today's date in YYYY-MM-DD format
+  const getTodayDate = () => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  };
+
+  // Get students with decision made today
+  const getTodaysDecisions = () => {
+    const today = getTodayDate();
+    return students.filter(s => s.decision_date === today);
+  };
+
+  const filteredStudents = students.filter(s => {
+    const matchesSearch = s.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          s.phone?.includes(searchQuery);
+    const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -249,7 +267,7 @@ export default function VisaTracker() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
-      <style>{`* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; } button { transition: all 0.3s; } button:hover { transform: translateY(-2px); } input, textarea { padding: 0.75rem; background-color: rgba(30, 41, 59, 0.5); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 0.5rem; color: white; font-size: 1rem; } input::placeholder, textarea::placeholder { color: rgb(148, 163, 184); } input:focus, textarea:focus { outline: none; border-color: rgb(59, 130, 246); background-color: rgba(30, 41, 59, 0.8); } table tbody tr:hover { background-color: rgba(55, 65, 81, 0.2); }`}</style>
+      <style>{`* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; } button { transition: all 0.3s; } button:hover { transform: translateY(-2px); } input, textarea, select { padding: 0.75rem; background-color: rgba(30, 41, 59, 0.5); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 0.5rem; color: white; font-size: 1rem; } input::placeholder, textarea::placeholder { color: rgb(148, 163, 184); } input:focus, textarea:focus, select:focus { outline: none; border-color: rgb(59, 130, 246); background-color: rgba(30, 41, 59, 0.8); } select option { background-color: rgb(30, 41, 59); color: white; } table tbody tr:hover { background-color: rgba(55, 65, 81, 0.2); }`}</style>
 
       {/* Header */}
       <div className="bg-slate-800/50 backdrop-blur border-b border-blue-500/20">
@@ -301,7 +319,7 @@ export default function VisaTracker() {
                   : 'border-transparent text-slate-400 hover:text-slate-300'
               }`}
             >
-              📈 Daily Summary
+              📅 Today's Decisions
             </button>
           </div>
         </div>
@@ -395,42 +413,23 @@ export default function VisaTracker() {
               ))}
             </div>
 
-            {/* Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Status Distribution */}
-              <div className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-6 backdrop-blur">
-                <h3 className="text-xl font-semibold text-white mb-4">Status Distribution</h3>
-                {students.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={250}>
-                    <PieChart>
-                      <Pie data={statusData} cx="50%" cy="50%" labelLine={false} label={({ name, value }) => `${name}: ${value}`} outerRadius={80} dataKey="value">
-                        {statusData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.fill} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <p className="text-slate-400 text-center py-12">No data yet. Add students to see charts.</p>
-                )}
-              </div>
-
-              {/* Daily Performance */}
-              <div className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-6 backdrop-blur">
-                <h3 className="text-xl font-semibold text-white mb-4">Last 7 Days Decision Stats</h3>
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={dailySummaries.slice(-7)}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                    <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                    <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #3b82f6' }} />
-                    <Legend />
-                    <Bar dataKey="approved" fill="#10b981" name="Approved" />
-                    <Bar dataKey="rejected" fill="#ef4444" name="Rejected" />
-                  </BarChart>
+            {/* Pie Chart Only */}
+            <div className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-6 backdrop-blur">
+              <h3 className="text-xl font-semibold text-white mb-4">Status Distribution</h3>
+              {students.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie data={statusData} cx="50%" cy="50%" labelLine={false} label={({ name, value }) => `${name}: ${value}`} outerRadius={80} dataKey="value">
+                      {statusData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
                 </ResponsiveContainer>
-              </div>
+              ) : (
+                <p className="text-slate-400 text-center py-12">No data yet. Add students to see charts.</p>
+              )}
             </div>
           </div>
         )}
@@ -440,8 +439,8 @@ export default function VisaTracker() {
           <div className="space-y-4">
             {loading && <p className="text-blue-400 text-center py-2">⏳ Loading...</p>}
             
-            {/* Search Box */}
-            <div className="flex gap-4">
+            {/* Search and Filter */}
+            <div className="flex flex-col md:flex-row gap-4">
               <input
                 type="text"
                 placeholder="🔍 Search by name or phone..."
@@ -449,7 +448,17 @@ export default function VisaTracker() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="flex-1 px-4 py-3 bg-slate-800/50 border border-blue-500/20 rounded-lg text-white placeholder-slate-400"
               />
-              <div className="text-slate-300 py-3 px-4 bg-slate-800/50 border border-blue-500/20 rounded-lg font-semibold">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-4 py-3 bg-slate-800/50 border border-blue-500/20 rounded-lg text-white font-semibold md:w-48"
+              >
+                <option value="all">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
+              <div className="text-slate-300 py-3 px-4 bg-slate-800/50 border border-blue-500/20 rounded-lg font-semibold whitespace-nowrap">
                 {filteredStudents.length} students
               </div>
             </div>
@@ -460,7 +469,7 @@ export default function VisaTracker() {
                 <table className="w-full">
                   <thead className="bg-slate-900/50 border-b border-blue-500/20">
                     <tr>
-                      {['Name', 'Phone', 'Joining', 'Interview', 'Decision', 'Days to Interview', 'Status', 'Actions'].map(h => (
+                      {['Name', 'Phone', 'Joining', 'Interview', 'Days to Interview', 'Decision', 'Status', 'Actions'].map(h => (
                         <th key={h} className="px-6 py-3 text-left text-sm font-semibold text-slate-300">{h}</th>
                       ))}
                     </tr>
@@ -479,8 +488,8 @@ export default function VisaTracker() {
                           <td className="px-6 py-4 text-slate-300 text-sm">{s.phone || '-'}</td>
                           <td className="px-6 py-4 text-slate-300 text-sm">{s.joining_date || '-'}</td>
                           <td className="px-6 py-4 text-slate-300 text-sm">{s.interview_date || '-'}</td>
+                          <td className="px-6 py-4 text-slate-300 text-sm font-semibold text-blue-400">{calculateDaysToInterview(s.interview_date)} days</td>
                           <td className="px-6 py-4 text-slate-300 text-sm">{s.decision_date || '-'}</td>
-                          <td className="px-6 py-4 text-slate-300 text-sm font-semibold">{calculateDays(s.joining_date, s.interview_date)} days</td>
                           <td className="px-6 py-4">
                             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                               s.status === 'approved' ? 'bg-green-500/20 text-green-400' :
@@ -504,40 +513,52 @@ export default function VisaTracker() {
           </div>
         )}
 
-        {/* Daily Summary Tab */}
+        {/* Today's Decisions Tab */}
         {tab === 'daily' && (
           <div className="space-y-6">
             <div className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-6 backdrop-blur">
-              <h3 className="text-xl font-semibold text-white mb-4">Daily Decision Trends (7 Days)</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={dailySummaries.slice(-7)}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                  <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #3b82f6' }} />
-                  <Legend />
-                  <Line type="monotone" dataKey="totalStudents" stroke="#3b82f6" name="Total Students" strokeWidth={2} />
-                  <Line type="monotone" dataKey="approved" stroke="#10b981" name="Approved" strokeWidth={2} />
-                  <Line type="monotone" dataKey="rejected" stroke="#ef4444" name="Rejected" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+              <h3 className="text-2xl font-semibold text-white mb-2">📅 Today's Decisions</h3>
+              <p className="text-slate-400 mb-6">Showing students with decision made on {getTodayDate()}</p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {dailySummaries.slice(-7).reverse().map((summary, i) => (
-                <div key={i} className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-4 backdrop-blur">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold text-white">{summary.date}</h4>
-                    <TrendingUp className="text-blue-400" size={20} />
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    <p className="text-slate-300">📊 <span className="font-semibold">{summary.totalStudents}</span> Total Students</p>
-                    <p className="text-green-400">✅ <span className="font-semibold">{summary.approved}</span> Approved</p>
-                    <p className="text-red-400">❌ <span className="font-semibold">{summary.rejected}</span> Rejected</p>
-                    <p className="text-yellow-400">⏳ <span className="font-semibold">{summary.pending_interviews}</span> Pending Interviews</p>
-                  </div>
+              {getTodaysDecisions().length === 0 ? (
+                <p className="text-slate-400 text-center py-12">No decisions made today.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-900/50 border-b border-blue-500/20">
+                      <tr>
+                        {['Name', 'Phone', 'Interview Date', 'Decision Date', 'Status', 'Notes', 'Actions'].map(h => (
+                          <th key={h} className="px-6 py-3 text-left text-sm font-semibold text-slate-300">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getTodaysDecisions().map(s => (
+                        <tr key={s.id} className="border-b border-blue-500/10 hover:bg-slate-700/20 transition">
+                          <td className="px-6 py-4 text-white font-semibold">{s.name}</td>
+                          <td className="px-6 py-4 text-slate-300 text-sm">{s.phone || '-'}</td>
+                          <td className="px-6 py-4 text-slate-300 text-sm">{s.interview_date || '-'}</td>
+                          <td className="px-6 py-4 text-slate-300 text-sm font-semibold">{s.decision_date}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                              s.status === 'approved' ? 'bg-green-500/20 text-green-400' :
+                              s.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
+                              'bg-yellow-500/20 text-yellow-400'
+                            }`}>
+                              {s.status || 'pending'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-slate-300 text-sm">{s.notes || '-'}</td>
+                          <td className="px-6 py-4 flex gap-2">
+                            <button onClick={() => handleEdit(s)} className="text-blue-400 hover:text-blue-300 font-semibold">Edit</button>
+                            <button onClick={() => handleDelete(s.id)} className="text-red-400 hover:text-red-300 font-semibold">Delete</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         )}
