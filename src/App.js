@@ -77,6 +77,12 @@ export default function VisaTracker() {
       return;
     }
 
+    // Validation: Approved ya Rejected par Decision Date zaroori hai
+    if ((formData.status === 'approved' || formData.status === 'rejected') && !formData.decision_date) {
+      alert('Please select Decision Made Date when marking status as Approved or Rejected');
+      return;
+    }
+
     if (editId) {
       setStudents(students.map(s => 
         s.id === editId ? { ...formData, id: editId } : s
@@ -233,7 +239,9 @@ export default function VisaTracker() {
                       <input type="date" name="interview_date" value={formData.interview_date} onChange={handleInputChange} className="w-full" />
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-sm font-semibold text-slate-300 mb-2">Decision Made Date</label>
+                      <label className="block text-sm font-semibold text-slate-300 mb-2">
+                        Decision Made Date {formData.status !== 'pending' && <span className="text-red-400">*</span>}
+                      </label>
                       <input type="date" name="decision_date" value={formData.decision_date} onChange={handleInputChange} className="w-full" />
                     </div>
                   </div>
