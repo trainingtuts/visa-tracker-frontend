@@ -16,40 +16,15 @@ export default function VisaTracker() {
     joining_date: '',
     interview_date: '',
     decision_date: '',
+    status: 'pending',
     notes: ''
   });
 
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Initialize with demo data
   useEffect(() => {
-    loadDemoData();
-  }, []);
-
-  const loadDemoData = () => {
-    const demoStudents = [
-      {
-        id: 1,
-        name: 'Ali Khan',
-        phone: '+92 300 1234567',
-        joining_date: '2024-10-01',
-        interview_date: '2024-07-20',
-        decision_date: '2024-08-10',
-        status: 'approved'
-      },
-      {
-        id: 2,
-        name: 'Fatima Ahmed',
-        phone: '+92 300 2234567',
-        joining_date: '2024-10-01',
-        interview_date: '2024-07-25',
-        decision_date: null,
-        status: 'pending'
-      }
-    ];
-    setStudents(demoStudents);
-    generateDailySummaries(demoStudents);
-  };
+    generateDailySummaries(students);
+  }, [students]);
 
   const generateDailySummaries = (data) => {
     const summaries = [];
@@ -60,11 +35,10 @@ export default function VisaTracker() {
 
       summaries.push({
         date: dateStr,
-        totalStudents: Math.floor(Math.random() * 20) + 5,
-        newSubmissions: Math.floor(Math.random() * 5) + 1,
-        approved: Math.floor(Math.random() * 8) + 2,
-        rejected: Math.floor(Math.random() * 3) + 1,
-        pending_interviews: Math.floor(Math.random() * 5) + 1
+        totalStudents: data.length,
+        approved: data.filter(s => s.status === 'approved').length,
+        rejected: data.filter(s => s.status === 'rejected').length,
+        pending_interviews: data.filter(s => s.status === 'pending').length
       });
     }
     setDailySummaries(summaries);
@@ -73,7 +47,7 @@ export default function VisaTracker() {
   const calculateStats = () => {
     const approved = students.filter(s => s.status === 'approved').length;
     const rejected = students.filter(s => s.status === 'rejected').length;
-    const pending = students.filter(s => s.status === 'pending').length;
+    const pending = students.filter(s => s.status === 'pending' || !s.status).length;
     const interviewed = students.filter(s => s.interview_date).length;
 
     return { approved, rejected, pending, interviewed, total: students.length };
@@ -88,8 +62,8 @@ export default function VisaTracker() {
   };
 
   const filteredStudents = students.filter(s =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.phone.includes(searchQuery)
+    s.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.phone?.includes(searchQuery)
   );
 
   const handleInputChange = (e) => {
@@ -139,6 +113,7 @@ export default function VisaTracker() {
       joining_date: '',
       interview_date: '',
       decision_date: '',
+      status: 'pending',
       notes: ''
     });
   };
@@ -153,7 +128,7 @@ export default function VisaTracker() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
-      <style>{`* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; } button { transition: all 0.3s; } button:hover { transform: translateY(-2px); } input, select, textarea { border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; font-size: 14px; } input:focus, select:focus, textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 244, 0.1); }`}</style>
+      <style>{`* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; } button { transition: all 0.3s; } button:hover { transform: translateY(-2px); } input, select, textarea { border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; font-size: 14px; color: #0f172a; } input:focus, select:focus, textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 244, 0.1); }`}</style>
 
       {/* Header */}
       <div className="bg-slate-800/50 backdrop-blur border-b border-blue-500/20">
@@ -227,12 +202,22 @@ export default function VisaTracker() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-slate-300 mb-2">Student Name *</label>
-                    <input type="text" name="name" value={formData.name} onChange={handleInputChange} placeholder="Full name" />
+                    <input type="text" name="name" value={formData.name} onChange={handleInputChange} placeholder="Full name" className="w-full" />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-300 mb-2">Phone Number *</label>
-                    <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} placeholder="+92 300 1234567" />
+                    <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} placeholder="+92 300 1234567" className="w-full" />
                   </div>
+                </div>
+
+                {/* Status Selection */}
+                <div>
+                  <label className="block text-sm font-semibold text-slate-300 mb-2">Visa Status *</label>
+                  <select name="status" value={formData.status} onChange={handleInputChange} className="w-full bg-white text-slate-900 font-medium">
+                    <option value="pending">⏳ Pending</option>
+                    <option value="approved">✅ Approved</option>
+                    <option value="rejected">❌ Rejected</option>
+                  </select>
                 </div>
 
                 {/* Key Dates */}
@@ -241,15 +226,15 @@ export default function VisaTracker() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-semibold text-slate-300 mb-2">Joining Date</label>
-                      <input type="date" name="joining_date" value={formData.joining_date} onChange={handleInputChange} />
+                      <input type="date" name="joining_date" value={formData.joining_date} onChange={handleInputChange} className="w-full" />
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-slate-300 mb-2">Interview Date</label>
-                      <input type="date" name="interview_date" value={formData.interview_date} onChange={handleInputChange} />
+                      <input type="date" name="interview_date" value={formData.interview_date} onChange={handleInputChange} className="w-full" />
                     </div>
                     <div className="col-span-2">
                       <label className="block text-sm font-semibold text-slate-300 mb-2">Decision Made Date</label>
-                      <input type="date" name="decision_date" value={formData.decision_date} onChange={handleInputChange} />
+                      <input type="date" name="decision_date" value={formData.decision_date} onChange={handleInputChange} className="w-full" />
                     </div>
                   </div>
                 </div>
@@ -257,7 +242,7 @@ export default function VisaTracker() {
                 {/* Notes */}
                 <div className="border-t border-blue-500/20 pt-4">
                   <label className="block text-sm font-semibold text-slate-300 mb-2">Additional Notes</label>
-                  <textarea name="notes" value={formData.notes} onChange={handleInputChange} placeholder="Any additional notes..." rows="3" />
+                  <textarea name="notes" value={formData.notes} onChange={handleInputChange} placeholder="Any additional notes..." rows="3" className="w-full" />
                 </div>
               </div>
 
