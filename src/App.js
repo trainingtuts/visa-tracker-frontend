@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Plus, Trash2, Eye, EyeOff, TrendingUp } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 
 // Initialize Supabase connection
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
@@ -267,6 +268,7 @@ export default function VisaTracker() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+      <Analytics />
       <style>{`* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; } button { transition: all 0.3s; } button:hover { transform: translateY(-2px); } input, textarea, select { padding: 0.75rem; background-color: rgba(30, 41, 59, 0.5); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 0.5rem; color: white; font-size: 1rem; } input::placeholder, textarea::placeholder { color: rgb(148, 163, 184); } input:focus, textarea:focus, select:focus { outline: none; border-color: rgb(59, 130, 246); background-color: rgba(30, 41, 59, 0.8); } select option { background-color: rgb(30, 41, 59); color: white; } table tbody tr:hover { background-color: rgba(55, 65, 81, 0.2); }`}</style>
 
       {/* Header */}
