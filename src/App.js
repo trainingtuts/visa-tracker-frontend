@@ -159,7 +159,7 @@ export default function VisaTracker() {
             joining_date: formData.joining_date || null,
             interview_date: formData.interview_date,
             decision_date: formData.decision_date || null,
-            notes: formData.notes.trim() || null,
+            notes: formData.notes?.trim() || null,
             status: formData.decision_date ? 'approved' : 'pending',
             updated_at: new Date().toISOString()
           })
@@ -182,7 +182,7 @@ export default function VisaTracker() {
             joining_date: formData.joining_date || null,
             interview_date: formData.interview_date,
             decision_date: formData.decision_date || null,
-            notes: formData.notes.trim() || null,
+            notes: formData.notes?.trim() || null,
             status: formData.decision_date ? 'approved' : 'pending'
           }]);
 
