@@ -155,7 +155,7 @@ export default function VisaTracker() {
           .from('students')
           .update({
             name: formData.name.trim(),
-            phone: formData.phone.trim() || null,
+            phone: formData.phone?.trim() || null,
             joining_date: formData.joining_date || null,
             interview_date: formData.interview_date,
             decision_date: formData.decision_date || null,
@@ -178,7 +178,7 @@ export default function VisaTracker() {
           .from('students')
           .insert([{
             name: formData.name.trim(),
-            phone: formData.phone.trim() || null,
+            phone: formData.phone?.trim() || null,
             joining_date: formData.joining_date || null,
             interview_date: formData.interview_date,
             decision_date: formData.decision_date || null,
