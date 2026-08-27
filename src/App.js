@@ -393,42 +393,98 @@ export default function VisaTracker() {
         )}
 
         {/* Daily Summary Tab */}
-        {tab === 'daily' && (
-          <div className="space-y-6">
-            <div className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-6 backdrop-blur">
-              <h3 className="text-xl font-semibold text-white mb-4">Daily Decision Trends (7 Days)</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={dailySummaries.slice(-7)}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                  <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #3b82f6' }} />
-                  <Legend />
-                  <Line type="monotone" dataKey="totalStudents" stroke="#3b82f6" name="Total Students" strokeWidth={2} />
-                  <Line type="monotone" dataKey="approved" stroke="#10b981" name="Approved" strokeWidth={2} />
-                  <Line type="monotone" dataKey="rejected" stroke="#ef4444" name="Rejected" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
+{tab === 'daily' && (
+  <div className="space-y-6">
+    <div className="flex justify-between items-center bg-slate-800/50 p-6 rounded-lg border border-blue-500/20 backdrop-blur">
+      <div>
+        <h3 className="text-2xl font-bold text-white">📅 Daily Decision Activity Log</h3>
+        <p className="text-slate-400 text-sm mt-1">List of student updates grouped by decision date</p>
+      </div>
+      <div className="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-lg font-semibold text-sm">
+        Today: {new Date().toISOString().split('T')[0]}
+      </div>
+    </div>
+
+    {/* Grouping students by Decision Date */}
+    {(() => {
+      // Get all unique decision dates, sorted newest first
+      const decisionDates = [...new Set(
+        students
+          .filter(s => s.decision_date)
+          .map(s => s.decision_date)
+      )].sort((a, b) => new Date(b) - new Date(a));
+
+      if (decisionDates.length === 0) {
+        return (
+          <div className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-12 text-center text-slate-400 backdrop-blur">
+            No decision updates recorded yet. Edit a student's status to Approved/Rejected and set a Decision Date to see them here.
+          </div>
+        );
+      }
+
+      return decisionDates.map(date => {
+        const studentsOnDate = students.filter(s => s.decision_date === date);
+
+        return (
+          <div key={date} className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-6 backdrop-blur space-y-4">
+            <div className="flex items-center justify-between border-b border-blue-500/20 pb-3">
+              <h4 className="text-xl font-bold text-white flex items-center gap-2">
+                📅 Decision Date: <span className="text-blue-400">{date}</span>
+              </h4>
+              <span className="bg-slate-700 text-slate-300 text-xs px-3 py-1 rounded-full font-semibold">
+                {studentsOnDate.length} Update(s)
+              </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {dailySummaries.slice(-7).reverse().map((summary, i) => (
-                <div key={i} className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-4 backdrop-blur">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold text-white">{summary.date}</h4>
-                    <TrendingUp className="text-blue-400" size={20} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {studentsOnDate.map(student => (
+                <div key={student.id} className="bg-slate-900/60 border border-slate-700/50 rounded-lg p-4 space-y-2">
+                  <div className="flex justify-between items-start border-b border-slate-800 pb-2">
+                    <span className="text-slate-400 text-xs uppercase tracking-wider">Student Name</span>
+                    <span className="font-bold text-white text-base">{student.name}</span>
                   </div>
-                  <div className="space-y-2 text-sm">
-                    <p className="text-slate-300">📊 <span className="font-semibold">{summary.totalStudents}</span> Total Students</p>
-                    <p className="text-green-400">✅ <span className="font-semibold">{summary.approved}</span> Approved</p>
-                    <p className="text-red-400">❌ <span className="font-semibold">{summary.rejected}</span> Rejected</p>
-                    <p className="text-yellow-400">⏳ <span className="font-semibold">{summary.pending_interviews}</span> Pending Interviews</p>
+
+                  <div className="grid grid-cols-2 gap-2 text-sm pt-1">
+                    <div>
+                      <span className="text-slate-400 block text-xs">Joining Date:</span>
+                      <span className="text-slate-200 font-medium">{student.joining_date || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-xs">Interview Date:</span>
+                      <span className="text-slate-200 font-medium">{student.interview_date || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-xs">Decision Made:</span>
+                      <span className="text-slate-200 font-medium">{student.decision_date}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-xs">Decision Status:</span>
+                      <span className={`inline-block font-semibold capitalize ${
+                        student.status === 'approved' ? 'text-green-400' :
+                        student.status === 'rejected' ? 'text-red-400' : 'text-yellow-400'
+                      }`}>
+                        {student.status === 'approved' ? '✅ Approved' : 
+                         student.status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}
+                      </span>
+                    </div>
                   </div>
+
+                  {student.phone && (
+                    <div className="text-xs text-slate-400 border-t border-slate-800/80 pt-2 flex justify-between">
+                      <span>Phone: {student.phone}</span>
+                      {student.notes && <span className="truncate max-w-[150px]">Note: {student.notes}</span>}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </div>
-        )}
+        );
+      });
+    })()}
+  </div>
+)}
+
       </div>
     </div>
   );
