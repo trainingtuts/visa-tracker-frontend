@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Plus, Trash2, Eye, EyeOff, TrendingUp } from 'lucide-react';
+import { supabase } from './supabaseClient';
+import { Plus } from 'lucide-react';
 
 export default function VisaTracker() {
   const [tab, setTab] = useState('dashboard');
   const [students, setStudents] = useState([]);
-  const [dailySummaries, setDailySummaries] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
+
+  // Status Filter State for Students Tab
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -22,93 +24,82 @@ export default function VisaTracker() {
 
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Current Date in YYYY-MM-DD
+  const todayStr = new Date().toISOString().split('T')[0];
+
   useEffect(() => {
-    generateDailySummaries(students);
-  }, [students]);
+    fetchStudents();
+  }, []);
 
-  const generateDailySummaries = (data) => {
-    const summaries = [];
-    for (let i = 7; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
+  const fetchStudents = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('students')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-      summaries.push({
-        date: dateStr,
-        totalStudents: data.length,
-        approved: data.filter(s => s.status === 'approved').length,
-        rejected: data.filter(s => s.status === 'rejected').length,
-        pending_interviews: data.filter(s => s.status === 'pending').length
-      });
+    if (error) {
+      console.error('Error fetching data:', error);
+    } else {
+      setStudents(data || []);
     }
-    setDailySummaries(summaries);
+    setLoading(false);
   };
-
-  const calculateStats = () => {
-    const approved = students.filter(s => s.status === 'approved').length;
-    const rejected = students.filter(s => s.status === 'rejected').length;
-    const pending = students.filter(s => s.status === 'pending' || !s.status).length;
-    const interviewed = students.filter(s => s.interview_date).length;
-
-    return { approved, rejected, pending, interviewed, total: students.length };
-  };
-
-  const calculateDays = (from, to) => {
-    if (!from || !to) return '-';
-    const d1 = new Date(from);
-    const d2 = new Date(to);
-    const days = Math.floor((d2 - d1) / (1000 * 60 * 60 * 24));
-    return days >= 0 ? days : '-';
-  };
-
-  const filteredStudents = students.filter(s =>
-    s.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.phone?.includes(searchQuery)
-  );
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleAddStudent = () => {
-    if (!formData.name || !formData.phone) {
-      alert('Name and phone required');
+  const handleAddStudent = async () => {
+    // 3. Interview Date Mandatory & 4. Phone Optional Validation
+    if (!formData.name) {
+      alert('Student Name is required');
       return;
     }
 
-    // Validation: Approved ya Rejected par Decision Date zaroori hai
+    if (!formData.interview_date) {
+      alert('Interview Date is required');
+      return;
+    }
+
     if ((formData.status === 'approved' || formData.status === 'rejected') && !formData.decision_date) {
       alert('Please select Decision Made Date when marking status as Approved or Rejected');
       return;
     }
 
     if (editId) {
-      setStudents(students.map(s => 
-        s.id === editId ? { ...formData, id: editId } : s
-      ));
-      setEditId(null);
+      const { error } = await supabase.from('students').update(formData).eq('id', editId);
+      if (error) alert('Error updating: ' + error.message);
     } else {
-      const newStudent = {
-        ...formData,
-        id: Date.now()
-      };
-      setStudents([...students, newStudent]);
+      const { error } = await supabase.from('students').insert([formData]);
+      if (error) alert('Error inserting: ' + error.message);
     }
 
     resetForm();
     setShowForm(false);
+    fetchStudents();
   };
 
   const handleEdit = (student) => {
-    setFormData(student);
+    setFormData({
+      name: student.name || '',
+      phone: student.phone || '',
+      joining_date: student.joining_date || '',
+      interview_date: student.interview_date || '',
+      decision_date: student.decision_date || '',
+      status: student.status || 'pending',
+      notes: student.notes || ''
+    });
     setEditId(student.id);
     setShowForm(true);
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm('Delete this student?')) {
-      setStudents(students.filter(s => s.id !== id));
+      const { error } = await supabase.from('students').delete().eq('id', id);
+      if (error) alert('Error deleting: ' + error.message);
+      else fetchStudents();
     }
   };
 
@@ -122,369 +113,284 @@ export default function VisaTracker() {
       status: 'pending',
       notes: ''
     });
+    setEditId(null);
   };
 
+  const calculateStats = () => {
+    const approved = students.filter(s => s.status === 'approved').length;
+    const rejected = students.filter(s => s.status === 'rejected').length;
+    const pending = students.filter(s => s.status === 'pending' || !s.status).length;
+    return { approved, rejected, pending, total: students.length };
+  };
+
+  // 2. Correct Formula: Days from Interview Date to Current Date (Today)
+  const calculateDaysSinceInterview = (interviewDate) => {
+    if (!interviewDate) return '-';
+    const interview = new Date(interviewDate);
+    const today = new Date(todayStr);
+    const diffTime = today - interview;
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays >= 0 ? `${diffDays} days ago` : `In ${Math.abs(diffDays)} days`;
+  };
+
+  // 1. Filtering by Status & Search Query
+  const filteredStudents = students.filter(s => {
+    const matchesSearch = s.name?.toLowerCase().includes(searchQuery.toLowerCase()) || s.phone?.includes(searchQuery);
+    const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  // 5. Daily Summary Filter: Only students whose Decision Date IS CURRENT DATE (Today)
+  const todayDecisionStudents = students.filter(
+    s => (s.status === 'approved' || s.status === 'rejected') && s.decision_date === todayStr
+  );
+
   const stats = calculateStats();
-  const statusColors = { approved: '#10b981', rejected: '#ef4444', pending: '#f59e0b' };
-  const statusData = [
-    { name: 'Approved', value: stats.approved, fill: statusColors.approved },
-    { name: 'Rejected', value: stats.rejected, fill: statusColors.rejected },
-    { name: 'Pending', value: stats.pending, fill: statusColors.pending }
-  ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
-      <style>{`* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; } button { transition: all 0.3s; } button:hover { transform: translateY(-2px); } input, select, textarea { border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; font-size: 14px; color: #0f172a; } input:focus, select:focus, textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 244, 0.1); }`}</style>
-
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white">
       {/* Header */}
-      <div className="bg-slate-800/50 backdrop-blur border-b border-blue-500/20">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-4xl font-bold text-white mb-2">🇩🇪 German Visa Tracker</h1>
-              <p className="text-blue-300">Crowdsourced visa timeline tracking system</p>
-            </div>
-            <button
-              onClick={() => setShowForm(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2"
-            >
-              <Plus size={20} /> Add Student
-            </button>
+      <div className="bg-slate-800/50 backdrop-blur border-b border-blue-500/20 px-6 py-6">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">🇩🇪 German Visa Tracker</h1>
+            <p className="text-blue-300 text-sm mt-1">Real-time Visa Updates System</p>
           </div>
+          <button
+            onClick={() => { resetForm(); setShowForm(true); }}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-semibold flex items-center gap-2"
+          >
+            <Plus size={18} /> Add Student
+          </button>
         </div>
       </div>
 
-      {/* Tab Navigation */}
+      {/* Tabs */}
       <div className="bg-slate-800/30 border-b border-blue-500/10 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex gap-8">
-            <button
-              onClick={() => setTab('dashboard')}
-              className={`py-4 px-2 font-semibold border-b-2 transition ${
-                tab === 'dashboard'
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-slate-400 hover:text-slate-300'
-              }`}
-            >
-              📊 Dashboard
-            </button>
-            <button
-              onClick={() => setTab('students')}
-              className={`py-4 px-2 font-semibold border-b-2 transition ${
-                tab === 'students'
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-slate-400 hover:text-slate-300'
-              }`}
-            >
-              👥 Students ({students.length})
-            </button>
-            <button
-              onClick={() => setTab('daily')}
-              className={`py-4 px-2 font-semibold border-b-2 transition ${
-                tab === 'daily'
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-slate-400 hover:text-slate-300'
-              }`}
-            >
-              📈 Daily Summary
-            </button>
-          </div>
+        <div className="max-w-7xl mx-auto px-6 flex gap-8">
+          <button
+            onClick={() => setTab('dashboard')}
+            className={`py-4 font-semibold border-b-2 transition ${
+              tab === 'dashboard' ? 'border-blue-400 text-blue-400' : 'border-transparent text-slate-400 hover:text-slate-300'
+            }`}
+          >
+            📊 Dashboard
+          </button>
+          <button
+            onClick={() => setTab('students')}
+            className={`py-4 font-semibold border-b-2 transition ${
+              tab === 'students' ? 'border-blue-400 text-blue-400' : 'border-transparent text-slate-400 hover:text-slate-300'
+            }`}
+          >
+            👥 Students ({students.length})
+          </button>
+          <button
+            onClick={() => setTab('daily')}
+            className={`py-4 font-semibold border-b-2 transition ${
+              tab === 'daily' ? 'border-blue-400 text-blue-400' : 'border-transparent text-slate-400 hover:text-slate-300'
+            }`}
+          >
+            📈 Daily Summary
+          </button>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Add/Edit Form Modal */}
-        {showForm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-blue-500/20">
-              <div className="sticky top-0 bg-slate-800 border-b border-blue-500/20 p-6 flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-white">{editId ? 'Edit' : 'Add'} Student</h2>
-                <button onClick={() => { setShowForm(false); resetForm(); setEditId(null); }} className="text-slate-400 hover:text-white">✕</button>
-              </div>
-
-              <div className="p-6 space-y-4">
-                {/* Personal Info */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-300 mb-2">Student Name *</label>
-                    <input type="text" name="name" value={formData.name} onChange={handleInputChange} placeholder="Full name" className="w-full" />
+      {/* Content Area */}
+      <div className="max-w-7xl mx-auto p-6">
+        {loading ? (
+          <div className="text-center py-16 text-slate-400">Loading data from Supabase...</div>
+        ) : (
+          <>
+            {/* Modal Form */}
+            {showForm && (
+              <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+                <div className="bg-slate-800 border border-blue-500/30 p-6 rounded-lg max-w-lg w-full space-y-4">
+                  <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+                    <h2 className="text-xl font-bold">{editId ? 'Edit Student' : 'Add Student'}</h2>
+                    <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-white">✕</button>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-slate-300 mb-2">Phone Number *</label>
-                    <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} placeholder="+92 300 1234567" className="w-full" />
+                    <label className="text-xs text-slate-400 block mb-1">Student Name *</label>
+                    <input type="text" name="name" value={formData.name} onChange={handleInputChange} placeholder="Full Name" className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded text-white" />
                   </div>
-                </div>
-
-                {/* Status Selection */}
-                <div>
-                  <label className="block text-sm font-semibold text-slate-300 mb-2">Visa Status *</label>
-                  <select name="status" value={formData.status} onChange={handleInputChange} className="w-full bg-white text-slate-900 font-medium">
-                    <option value="pending">⏳ Pending</option>
-                    <option value="approved">✅ Approved</option>
-                    <option value="rejected">❌ Rejected</option>
-                  </select>
-                </div>
-
-                {/* Key Dates */}
-                <div className="border-t border-blue-500/20 pt-4">
-                  <h3 className="font-semibold text-slate-300 mb-4">Key Dates</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Phone Number (Optional)</label>
+                    <input type="text" name="phone" value={formData.phone} onChange={handleInputChange} placeholder="Phone Number" className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded text-white" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Visa Status *</label>
+                    <select name="status" value={formData.status} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded text-white">
+                      <option value="pending">⏳ Pending</option>
+                      <option value="approved">✅ Approved</option>
+                      <option value="rejected">❌ Rejected</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-semibold text-slate-300 mb-2">Joining Date</label>
-                      <input type="date" name="joining_date" value={formData.joining_date} onChange={handleInputChange} className="w-full" />
+                      <label className="text-xs text-slate-400 block mb-1">Joining Date</label>
+                      <input type="date" name="joining_date" value={formData.joining_date} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded text-white" />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-slate-300 mb-2">Interview Date</label>
-                      <input type="date" name="interview_date" value={formData.interview_date} onChange={handleInputChange} className="w-full" />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="block text-sm font-semibold text-slate-300 mb-2">
-                        Decision Made Date {formData.status !== 'pending' && <span className="text-red-400">*</span>}
-                      </label>
-                      <input type="date" name="decision_date" value={formData.decision_date} onChange={handleInputChange} className="w-full" />
+                      <label className="text-xs text-slate-400 block mb-1">Interview Date *</label>
+                      <input type="date" name="interview_date" value={formData.interview_date} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded text-white" />
                     </div>
                   </div>
-                </div>
-
-                {/* Notes */}
-                <div className="border-t border-blue-500/20 pt-4">
-                  <label className="block text-sm font-semibold text-slate-300 mb-2">Additional Notes</label>
-                  <textarea name="notes" value={formData.notes} onChange={handleInputChange} placeholder="Any additional notes..." rows="3" className="w-full" />
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Decision Made Date {formData.status !== 'pending' && '*'}</label>
+                    <input type="date" name="decision_date" value={formData.decision_date} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded text-white" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Notes</label>
+                    <textarea name="notes" value={formData.notes} onChange={handleInputChange} placeholder="Additional notes..." rows="2" className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded text-white" />
+                  </div>
+                  <div className="flex gap-2 justify-end pt-3 border-t border-slate-700">
+                    <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-slate-700 rounded font-semibold">Cancel</button>
+                    <button onClick={handleAddStudent} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 rounded font-semibold">{editId ? 'Update' : 'Save'}</button>
+                  </div>
                 </div>
               </div>
+            )}
 
-              <div className="border-t border-blue-500/20 p-6 flex gap-4 justify-end">
-                <button onClick={() => { setShowForm(false); resetForm(); setEditId(null); }} className="px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold">Cancel</button>
-                <button onClick={handleAddStudent} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold">{editId ? 'Update' : 'Add'} Student</button>
+            {/* Dashboard Tab */}
+            {tab === 'dashboard' && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                {[
+                  { label: 'Total Students', value: stats.total, icon: '👥' },
+                  { label: 'Approved', value: stats.approved, icon: '✅' },
+                  { label: 'Pending', value: stats.pending, icon: '⏳' },
+                  { label: 'Rejected', value: stats.rejected, icon: '❌' }
+                ].map((stat, i) => (
+                  <div key={i} className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-6">
+                    <p className="text-slate-400 text-sm font-semibold">{stat.label}</p>
+                    <p className="text-4xl font-bold text-white mt-2">{stat.value}</p>
+                  </div>
+                ))}
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {/* Dashboard Tab */}
-        {tab === 'dashboard' && (
-          <div className="space-y-8">
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {[
-                { label: 'Total Students', value: stats.total, color: '#3b82f6', icon: '👥' },
-                { label: 'Approved', value: stats.approved, color: '#10b981', icon: '✅' },
-                { label: 'Pending', value: stats.pending, color: '#f59e0b', icon: '⏳' },
-                { label: 'Rejected', value: stats.rejected, color: '#ef4444', icon: '❌' }
-              ].map((stat, i) => (
-                <div key={i} className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-6 backdrop-blur">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-slate-400 text-sm font-semibold">{stat.label}</p>
-                      <p className="text-4xl font-bold text-white mt-2">{stat.value}</p>
-                    </div>
-                    <div className="text-5xl opacity-50">{stat.icon}</div>
+            {/* Students Tab */}
+            {tab === 'students' && (
+              <div className="space-y-4">
+                <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+                  <input
+                    type="text"
+                    placeholder="🔍 Search by name or phone..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full md:w-1/2 px-4 py-2.5 bg-slate-800/50 border border-blue-500/20 rounded-lg text-white"
+                  />
+                  
+                  {/* 1. STATUS FILTER BUTTONS */}
+                  <div className="flex gap-2 w-full md:w-auto overflow-x-auto">
+                    {['all', 'pending', 'approved', 'rejected'].map(status => (
+                      <button
+                        key={status}
+                        onClick={() => setStatusFilter(status)}
+                        className={`px-4 py-2 rounded-lg font-semibold text-xs capitalize transition ${
+                          statusFilter === status
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-800/50 text-slate-400 hover:text-slate-200 border border-slate-700'
+                        }`}
+                      >
+                        {status}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
 
-            {/* Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Status Distribution */}
-              <div className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-6 backdrop-blur">
-                <h3 className="text-xl font-semibold text-white mb-4">Status Distribution</h3>
-                {students.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={250}>
-                    <PieChart>
-                      <Pie data={statusData} cx="50%" cy="50%" labelLine={false} label={({ name, value }) => `${name}: ${value}`} outerRadius={80} dataKey="value">
-                        {statusData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.fill} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
+                <div className="bg-slate-800/50 border border-blue-500/20 rounded-lg overflow-hidden">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-900/50 border-b border-blue-500/20 text-slate-300 text-sm">
+                      <tr>
+                        <th className="p-4">Name</th>
+                        <th className="p-4">Phone</th>
+                        <th className="p-4">Joining</th>
+                        <th className="p-4">Interview</th>
+                        <th className="p-4">Decision Date</th>
+                        <th className="p-4">Days Since Interview</th>
+                        <th className="p-4">Status</th>
+                        <th className="p-4">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredStudents.length === 0 ? (
+                        <tr><td colSpan="8" className="p-8 text-center text-slate-400">No matching students found.</td></tr>
+                      ) : (
+                        filteredStudents.map(s => (
+                          <tr key={s.id} className="border-b border-slate-800 hover:bg-slate-800/40">
+                            <td className="p-4 font-semibold">{s.name}</td>
+                            <td className="p-4 text-slate-300">{s.phone || '-'}</td>
+                            <td className="p-4 text-slate-300">{s.joining_date || '-'}</td>
+                            <td className="p-4 text-slate-300">{s.interview_date}</td>
+                            <td className="p-4 text-slate-300">{s.decision_date || '-'}</td>
+                            <td className="p-4 text-slate-300 font-mono text-xs">{calculateDaysSinceInterview(s.interview_date)}</td>
+                            <td className="p-4">
+                              <span className={`px-2.5 py-1 rounded text-xs font-semibold uppercase ${
+                                s.status === 'approved' ? 'bg-green-500/20 text-green-400' :
+                                s.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
+                                'bg-yellow-500/20 text-yellow-400'
+                              }`}>
+                                {s.status}
+                              </span>
+                            </td>
+                            <td className="p-4 flex gap-3">
+                              <button onClick={() => handleEdit(s)} className="text-blue-400 font-semibold">Edit</button>
+                              <button onClick={() => handleDelete(s.id)} className="text-red-400 font-semibold">Delete</button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* 5. DAILY SUMMARY TAB - ONLY CURRENT DATE DECISIONS */}
+            {tab === 'daily' && (
+              <div className="space-y-6">
+                <div className="bg-slate-800/50 border border-blue-500/20 p-5 rounded-lg flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-bold">📋 Daily Decision Updates</h3>
+                    <p className="text-slate-400 text-xs mt-1">Showing decision updates for TODAY only</p>
+                  </div>
+                  <span className="bg-blue-600/30 text-blue-400 border border-blue-500/40 px-4 py-1.5 rounded-lg font-semibold text-sm">
+                    Today: {todayStr}
+                  </span>
+                </div>
+
+                {todayDecisionStudents.length === 0 ? (
+                  <div className="bg-slate-800/40 border border-blue-500/20 rounded-lg p-12 text-center text-slate-400">
+                    No student decision updates recorded for today ({todayStr}).
+                  </div>
                 ) : (
-                  <p className="text-slate-400 text-center py-12">No data yet. Add students to see charts.</p>
+                  <div className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-6 space-y-4">
+                    <h4 className="text-lg font-bold text-blue-400 border-b border-slate-700/80 pb-3 flex justify-between items-center">
+                      <span>📅 Current Date: {todayStr}</span>
+                      <span className="text-xs bg-slate-700 px-3 py-1 rounded-full text-slate-300">
+                        {todayDecisionStudents.length} Decisions Today
+                      </span>
+                    </h4>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {todayDecisionStudents.map(student => (
+                        <div key={student.id} className="bg-slate-900/80 border border-slate-700 p-4 rounded-lg space-y-1.5 text-sm font-mono">
+                          <p><span className="text-slate-400 font-sans">Student:</span> <strong className="text-white font-sans text-base">{student.name}</strong></p>
+                          <p><span className="text-slate-400 font-sans">Joining date:</span> {student.joining_date || '-'}</p>
+                          <p><span className="text-slate-400 font-sans">Interview date:</span> {student.interview_date}</p>
+                          <p><span className="text-slate-400 font-sans">Decision made:</span> {student.decision_date}</p>
+                          <p><span className="text-slate-400 font-sans">Decision:</span> <span className={`font-bold capitalize ${
+                            student.status === 'approved' ? 'text-green-400' : 'text-red-400'
+                          }`}>{student.status}</span></p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
-
-              {/* Daily Performance */}
-              <div className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-6 backdrop-blur">
-                <h3 className="text-xl font-semibold text-white mb-4">Last 7 Days Decision Stats</h3>
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={dailySummaries.slice(-7)}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                    <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                    <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #3b82f6' }} />
-                    <Legend />
-                    <Bar dataKey="approved" fill="#10b981" name="Approved" />
-                    <Bar dataKey="rejected" fill="#ef4444" name="Rejected" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
+            )}
+          </>
         )}
-
-        {/* Students Tab */}
-        {tab === 'students' && (
-          <div className="space-y-4">
-            {/* Search Box */}
-            <div className="flex gap-4">
-              <input
-                type="text"
-                placeholder="🔍 Search by name or phone..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="flex-1 px-4 py-3 bg-slate-800/50 border border-blue-500/20 rounded-lg text-white placeholder-slate-400"
-              />
-              <div className="text-slate-300 py-3 px-4 bg-slate-800/50 border border-blue-500/20 rounded-lg font-semibold">
-                {filteredStudents.length} students
-              </div>
-            </div>
-
-            {/* Students Table */}
-            <div className="bg-slate-800/50 border border-blue-500/20 rounded-lg backdrop-blur overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-slate-900/50 border-b border-blue-500/20">
-                    <tr>
-                      {['Name', 'Phone', 'Joining', 'Interview', 'Decision', 'Days to Interview', 'Status', 'Actions'].map(h => (
-                        <th key={h} className="px-6 py-3 text-left text-sm font-semibold text-slate-300">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredStudents.length === 0 ? (
-                      <tr>
-                        <td colSpan="8" className="px-6 py-12 text-center text-slate-400">
-                          {students.length === 0 ? 'No students yet. Click "Add Student" to get started.' : 'No matching students found.'}
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredStudents.map(s => (
-                        <tr key={s.id} className="border-b border-blue-500/10 hover:bg-slate-700/20 transition">
-                          <td className="px-6 py-4 text-white font-semibold">{s.name}</td>
-                          <td className="px-6 py-4 text-slate-300 text-sm">{s.phone}</td>
-                          <td className="px-6 py-4 text-slate-300 text-sm">{s.joining_date || '-'}</td>
-                          <td className="px-6 py-4 text-slate-300 text-sm">{s.interview_date || '-'}</td>
-                          <td className="px-6 py-4 text-slate-300 text-sm">{s.decision_date || '-'}</td>
-                          <td className="px-6 py-4 text-slate-300 text-sm font-semibold">{calculateDays(s.joining_date, s.interview_date)} days</td>
-                          <td className="px-6 py-4">
-                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                              s.status === 'approved' ? 'bg-green-500/20 text-green-400' :
-                              s.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
-                              'bg-yellow-500/20 text-yellow-400'
-                            }`}>
-                              {s.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 flex gap-2">
-                            <button onClick={() => handleEdit(s)} className="text-blue-400 hover:text-blue-300 font-semibold">Edit</button>
-                            <button onClick={() => handleDelete(s.id)} className="text-red-400 hover:text-red-300 font-semibold">Delete</button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Daily Summary Tab */}
-{tab === 'daily' && (
-  <div className="space-y-6">
-    <div className="flex justify-between items-center bg-slate-800/50 p-6 rounded-lg border border-blue-500/20 backdrop-blur">
-      <div>
-        <h3 className="text-2xl font-bold text-white">📅 Daily Decision Activity Log</h3>
-        <p className="text-slate-400 text-sm mt-1">List of student updates grouped by decision date</p>
-      </div>
-      <div className="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-lg font-semibold text-sm">
-        Today: {new Date().toISOString().split('T')[0]}
-      </div>
-    </div>
-
-    {/* Grouping students by Decision Date */}
-    {(() => {
-      // Get all unique decision dates, sorted newest first
-      const decisionDates = [...new Set(
-        students
-          .filter(s => s.decision_date)
-          .map(s => s.decision_date)
-      )].sort((a, b) => new Date(b) - new Date(a));
-
-      if (decisionDates.length === 0) {
-        return (
-          <div className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-12 text-center text-slate-400 backdrop-blur">
-            No decision updates recorded yet. Edit a student's status to Approved/Rejected and set a Decision Date to see them here.
-          </div>
-        );
-      }
-
-      return decisionDates.map(date => {
-        const studentsOnDate = students.filter(s => s.decision_date === date);
-
-        return (
-          <div key={date} className="bg-slate-800/50 border border-blue-500/20 rounded-lg p-6 backdrop-blur space-y-4">
-            <div className="flex items-center justify-between border-b border-blue-500/20 pb-3">
-              <h4 className="text-xl font-bold text-white flex items-center gap-2">
-                📅 Decision Date: <span className="text-blue-400">{date}</span>
-              </h4>
-              <span className="bg-slate-700 text-slate-300 text-xs px-3 py-1 rounded-full font-semibold">
-                {studentsOnDate.length} Update(s)
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {studentsOnDate.map(student => (
-                <div key={student.id} className="bg-slate-900/60 border border-slate-700/50 rounded-lg p-4 space-y-2">
-                  <div className="flex justify-between items-start border-b border-slate-800 pb-2">
-                    <span className="text-slate-400 text-xs uppercase tracking-wider">Student Name</span>
-                    <span className="font-bold text-white text-base">{student.name}</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-sm pt-1">
-                    <div>
-                      <span className="text-slate-400 block text-xs">Joining Date:</span>
-                      <span className="text-slate-200 font-medium">{student.joining_date || 'N/A'}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-xs">Interview Date:</span>
-                      <span className="text-slate-200 font-medium">{student.interview_date || 'N/A'}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-xs">Decision Made:</span>
-                      <span className="text-slate-200 font-medium">{student.decision_date}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-xs">Decision Status:</span>
-                      <span className={`inline-block font-semibold capitalize ${
-                        student.status === 'approved' ? 'text-green-400' :
-                        student.status === 'rejected' ? 'text-red-400' : 'text-yellow-400'
-                      }`}>
-                        {student.status === 'approved' ? '✅ Approved' : 
-                         student.status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {student.phone && (
-                    <div className="text-xs text-slate-400 border-t border-slate-800/80 pt-2 flex justify-between">
-                      <span>Phone: {student.phone}</span>
-                      {student.notes && <span className="truncate max-w-[150px]">Note: {student.notes}</span>}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      });
-    })()}
-  </div>
-)}
-
       </div>
     </div>
   );
