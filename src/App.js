@@ -1,6 +1,17 @@
 import React, { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Plus, Trash2, Eye, EyeOff, TrendingUp } from 'lucide-react';
+
+// Initialize Supabase connection
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
+const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('❌ Missing Supabase credentials. Check your .env.local file');
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function VisaTracker() {
   const [tab, setTab] = useState('dashboard');
@@ -21,34 +32,36 @@ export default function VisaTracker() {
 
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Initialize with demo data
+  // Load students from database when app starts
   useEffect(() => {
-    loadDemoData();
+    loadStudentsFromDatabase();
+    generateDailySummaries([]);
   }, []);
 
-  const loadDemoData = () => {
-    const demoStudents = [
-      {
-        id: 1,
-        name: 'Ali Khan',
-        phone: '+92 300 1234567',
-        joining_date: '2024-10-01',
-        interview_date: '2024-07-20',
-        decision_date: '2024-08-10',
-        status: 'approved'
-      },
-      {
-        id: 2,
-        name: 'Fatima Ahmed',
-        phone: '+92 300 2234567',
-        joining_date: '2024-10-01',
-        interview_date: '2024-07-25',
-        decision_date: null,
-        status: 'pending'
+  // ===== STEP 1: FETCH DATA FROM DATABASE =====
+  const loadStudentsFromDatabase = async () => {
+    try {
+      setLoading(true);
+      console.log('📥 Fetching students from Supabase...');
+      
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error loading students:', error.message);
+        alert('Error loading students: ' + error.message);
+        return;
       }
-    ];
-    setStudents(demoStudents);
-    generateDailySummaries(demoStudents);
+
+      console.log('✅ Students loaded from database:', data);
+      setStudents(data || []);
+    } catch (err) {
+      console.error('❌ Unexpected error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const generateDailySummaries = (data) => {
@@ -97,28 +110,72 @@ export default function VisaTracker() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleAddStudent = () => {
+  // ===== STEP 2: SAVE DATA TO DATABASE =====
+  const handleAddStudent = async () => {
     if (!formData.name || !formData.phone) {
       alert('Name and phone required');
       return;
     }
 
-    if (editId) {
-      setStudents(students.map(s => 
-        s.id === editId ? { ...formData, id: editId } : s
-      ));
-      setEditId(null);
-    } else {
-      const newStudent = {
-        ...formData,
-        id: Date.now(),
-        status: formData.decision_date ? 'approved' : 'pending'
-      };
-      setStudents([...students, newStudent]);
-    }
+    try {
+      setLoading(true);
+      
+      if (editId) {
+        // UPDATE existing student in database
+        console.log('✏️ Updating student:', editId);
+        const { error } = await supabase
+          .from('students')
+          .update({
+            name: formData.name,
+            phone: formData.phone,
+            joining_date: formData.joining_date || null,
+            interview_date: formData.interview_date || null,
+            decision_date: formData.decision_date || null,
+            notes: formData.notes,
+            status: formData.decision_date ? 'approved' : 'pending'
+          })
+          .eq('id', editId);
 
-    resetForm();
-    setShowForm(false);
+        if (error) {
+          console.error('❌ Update error:', error.message);
+          alert('❌ Error updating student: ' + error.message);
+          return;
+        }
+        console.log('✅ Student updated successfully');
+      } else {
+        // INSERT new student to database
+        console.log('➕ Adding new student:', formData.name);
+        const { error } = await supabase
+          .from('students')
+          .insert([{
+            name: formData.name,
+            phone: formData.phone,
+            joining_date: formData.joining_date || null,
+            interview_date: formData.interview_date || null,
+            decision_date: formData.decision_date || null,
+            notes: formData.notes,
+            status: formData.decision_date ? 'approved' : 'pending'
+          }]);
+
+        if (error) {
+          console.error('❌ Insert error:', error.message);
+          alert('❌ Error adding student: ' + error.message);
+          return;
+        }
+        console.log('✅ Student added successfully');
+      }
+
+      // Reload students from database
+      await loadStudentsFromDatabase();
+      resetForm();
+      setShowForm(false);
+      setEditId(null);
+    } catch (err) {
+      console.error('❌ Unexpected error:', err);
+      alert('❌ Error: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleEdit = (student) => {
@@ -127,9 +184,33 @@ export default function VisaTracker() {
     setShowForm(true);
   };
 
-  const handleDelete = (id) => {
+  // ===== STEP 3: DELETE DATA FROM DATABASE =====
+  const handleDelete = async (id) => {
     if (window.confirm('Delete this student?')) {
-      setStudents(students.filter(s => s.id !== id));
+      try {
+        setLoading(true);
+        console.log('🗑️ Deleting student:', id);
+        
+        const { error } = await supabase
+          .from('students')
+          .delete()
+          .eq('id', id);
+
+        if (error) {
+          console.error('❌ Delete error:', error.message);
+          alert('❌ Error deleting student: ' + error.message);
+          return;
+        }
+
+        console.log('✅ Student deleted successfully');
+        // Reload students from database
+        await loadStudentsFromDatabase();
+      } catch (err) {
+        console.error('❌ Unexpected error:', err);
+        alert('❌ Error: ' + err.message);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -154,7 +235,7 @@ export default function VisaTracker() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
-      <style>{`* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; } button { transition: all 0.3s; } button:hover { transform: translateY(-2px); } input, select, textarea { border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; font-size: 14px; color: #0f172a; } input:focus, select:focus, textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 244, 0.1); }`}</style>
+      <style>{`* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; } button { transition: all 0.3s; } button:hover { transform: translateY(-2px); } input, textarea { padding: 0.75rem; background-color: rgba(30, 41, 59, 0.5); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 0.5rem; color: white; font-size: 1rem; } input::placeholder, textarea::placeholder { color: rgb(148, 163, 184); } input:focus, textarea:focus { outline: none; border-color: rgb(59, 130, 246); background-color: rgba(30, 41, 59, 0.8); } table tbody tr:hover { background-color: rgba(55, 65, 81, 0.2); }`}</style>
 
       {/* Header */}
       <div className="bg-slate-800/50 backdrop-blur border-b border-blue-500/20">
@@ -264,7 +345,7 @@ export default function VisaTracker() {
 
               <div className="border-t border-blue-500/20 p-6 flex gap-4 justify-end">
                 <button onClick={() => { setShowForm(false); resetForm(); setEditId(null); }} className="px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold">Cancel</button>
-                <button onClick={handleAddStudent} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold">{editId ? 'Update' : 'Add'} Student</button>
+                <button onClick={handleAddStudent} disabled={loading} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold disabled:opacity-50">{loading ? 'Saving...' : (editId ? 'Update' : 'Add')} Student</button>
               </div>
             </div>
           </div>
@@ -336,6 +417,8 @@ export default function VisaTracker() {
         {/* Students Tab */}
         {tab === 'students' && (
           <div className="space-y-4">
+            {loading && <p className="text-blue-400 text-center py-2">⏳ Loading...</p>}
+            
             {/* Search Box */}
             <div className="flex gap-4">
               <input
