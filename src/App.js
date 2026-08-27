@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from ‘react’;
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from ‘recharts’;
-import { Plus, Trash2, Eye, EyeOff, TrendingUp } from ‘lucide-react’;
+import React, { useState, useEffect } from 'react';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { Plus, Trash2, Eye, EyeOff, TrendingUp } from 'lucide-react';
 
 export default function VisaTracker() {
 const [tab, setTab] = useState(‘dashboard’);
