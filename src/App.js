@@ -30,6 +30,7 @@ export default function VisaTracker() {
     joining_date: '',
     interview_date: '',
     decision_date: '',
+    status: 'pending',
     notes: ''
   });
 
@@ -161,7 +162,7 @@ export default function VisaTracker() {
             interview_date: formData.interview_date,
             decision_date: formData.decision_date || null,
             notes: formData.notes?.trim() || null,
-            status: formData.decision_date ? 'approved' : 'pending',
+            status: formData.status || 'pending',
             updated_at: new Date().toISOString()
           })
           .eq('id', editId);
@@ -184,7 +185,7 @@ export default function VisaTracker() {
             interview_date: formData.interview_date,
             decision_date: formData.decision_date || null,
             notes: formData.notes?.trim() || null,
-            status: formData.decision_date ? 'approved' : 'pending'
+            status: formData.status || 'pending',
           }]);
 
         if (insertError) {
@@ -209,7 +210,16 @@ export default function VisaTracker() {
   };
 
   const handleEdit = (student) => {
-    setFormData(student);
+    // setFormData(student);
+setFormData({
+  name: student.name || '',
+  phone: student.phone || '',
+  joining_date: student.joining_date || '',
+  interview_date: student.interview_date || '',
+  decision_date: student.decision_date || '',
+  status: student.status || 'pending',
+  notes: student.notes || ''
+});
     setEditId(student.id);
     setShowForm(true);
     setError('');
@@ -253,6 +263,7 @@ export default function VisaTracker() {
       joining_date: '',
       interview_date: '',
       decision_date: '',
+      status: 'pending',
       notes: ''
     });
     setError('');
@@ -374,6 +385,22 @@ export default function VisaTracker() {
                       <label className="block text-sm font-semibold text-slate-300 mb-2">Decision Made Date</label>
                       <input type="date" name="decision_date" value={formData.decision_date} onChange={handleInputChange} className="w-full" />
                     </div>
+                    <div className="col-span-2">
+  <label className="block text-sm font-semibold text-slate-300 mb-2">
+    Visa Status
+  </label>
+
+  <select
+    name="status"
+    value={formData.status || 'pending'}
+    onChange={handleInputChange}
+    className="w-full"
+  >
+    <option value="pending">Pending</option>
+    <option value="approved">Approved</option>
+    <option value="rejected">Rejected</option>
+  </select>
+</div>
                   </div>
                 </div>
 
