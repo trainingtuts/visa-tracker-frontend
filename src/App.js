@@ -128,10 +128,28 @@ export default function VisaTracker() {
     return matchesSearch && matchesStatus;
   });
 
+  // const handleInputChange = (e) => {
+    // const { name, value } = e.target;
+    // setFormData(prev => ({ ...prev, [name]: value }));
+  // };
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
+  const { name, value } = e.target;
+
+  setFormData(prev => {
+    if (name === 'status' && value === 'pending') {
+      return {
+        ...prev,
+        status: value,
+        decision_date: ''
+      };
+    }
+
+    return {
+      ...prev,
+      [name]: value
+    };
+  });
+};
 
   // ===== SAVE DATA TO DATABASE =====
   const handleAddStudent = async () => {
