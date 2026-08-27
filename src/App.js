@@ -20,6 +20,7 @@ export default function VisaTracker() {
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [error, setError] = useState('');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -38,20 +39,21 @@ export default function VisaTracker() {
     generateDailySummaries([]);
   }, []);
 
-  // ===== STEP 1: FETCH DATA FROM DATABASE =====
+  // ===== FETCH DATA FROM DATABASE =====
   const loadStudentsFromDatabase = async () => {
     try {
       setLoading(true);
+      setError('');
       console.log('📥 Fetching students from Supabase...');
       
-      const { data, error } = await supabase
+      const { data, error: fetchError } = await supabase
         .from('students')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('❌ Error loading students:', error.message);
-        alert('Error loading students: ' + error.message);
+      if (fetchError) {
+        console.error('❌ Error loading students:', fetchError.message);
+        setError('Error loading students: ' + fetchError.message);
         return;
       }
 
@@ -59,6 +61,7 @@ export default function VisaTracker() {
       setStudents(data || []);
     } catch (err) {
       console.error('❌ Unexpected error:', err);
+      setError('Unexpected error: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -110,56 +113,64 @@ export default function VisaTracker() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // ===== STEP 2: SAVE DATA TO DATABASE =====
+  // ===== SAVE DATA TO DATABASE =====
   const handleAddStudent = async () => {
-    if (!formData.name || !formData.phone) {
-      alert('Name and phone required');
+    // Validation
+    if (!formData.name || !formData.name.trim()) {
+      setError('Student name is required');
+      return;
+    }
+
+    if (!formData.interview_date) {
+      setError('Interview date is required');
       return;
     }
 
     try {
       setLoading(true);
+      setError('');
       
       if (editId) {
         // UPDATE existing student in database
         console.log('✏️ Updating student:', editId);
-        const { error } = await supabase
+        const { error: updateError } = await supabase
           .from('students')
           .update({
-            name: formData.name,
-            phone: formData.phone,
+            name: formData.name.trim(),
+            phone: formData.phone.trim() || null,
             joining_date: formData.joining_date || null,
-            interview_date: formData.interview_date || null,
+            interview_date: formData.interview_date,
             decision_date: formData.decision_date || null,
-            notes: formData.notes,
-            status: formData.decision_date ? 'approved' : 'pending'
+            notes: formData.notes.trim() || null,
+            status: formData.decision_date ? 'approved' : 'pending',
+            updated_at: new Date().toISOString()
           })
           .eq('id', editId);
 
-        if (error) {
-          console.error('❌ Update error:', error.message);
-          alert('❌ Error updating student: ' + error.message);
+        if (updateError) {
+          console.error('❌ Update error:', updateError.message);
+          setError('Error updating student: ' + updateError.message);
           return;
         }
         console.log('✅ Student updated successfully');
       } else {
         // INSERT new student to database
         console.log('➕ Adding new student:', formData.name);
-        const { error } = await supabase
+        const { error: insertError } = await supabase
           .from('students')
           .insert([{
-            name: formData.name,
-            phone: formData.phone,
+            name: formData.name.trim(),
+            phone: formData.phone.trim() || null,
             joining_date: formData.joining_date || null,
-            interview_date: formData.interview_date || null,
+            interview_date: formData.interview_date,
             decision_date: formData.decision_date || null,
-            notes: formData.notes,
+            notes: formData.notes.trim() || null,
             status: formData.decision_date ? 'approved' : 'pending'
           }]);
 
-        if (error) {
-          console.error('❌ Insert error:', error.message);
-          alert('❌ Error adding student: ' + error.message);
+        if (insertError) {
+          console.error('❌ Insert error:', insertError.message);
+          setError('Error adding student: ' + insertError.message);
           return;
         }
         console.log('✅ Student added successfully');
@@ -172,7 +183,7 @@ export default function VisaTracker() {
       setEditId(null);
     } catch (err) {
       console.error('❌ Unexpected error:', err);
-      alert('❌ Error: ' + err.message);
+      setError('Error: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -182,23 +193,25 @@ export default function VisaTracker() {
     setFormData(student);
     setEditId(student.id);
     setShowForm(true);
+    setError('');
   };
 
-  // ===== STEP 3: DELETE DATA FROM DATABASE =====
+  // ===== DELETE DATA FROM DATABASE =====
   const handleDelete = async (id) => {
     if (window.confirm('Delete this student?')) {
       try {
         setLoading(true);
+        setError('');
         console.log('🗑️ Deleting student:', id);
         
-        const { error } = await supabase
+        const { error: deleteError } = await supabase
           .from('students')
           .delete()
           .eq('id', id);
 
-        if (error) {
-          console.error('❌ Delete error:', error.message);
-          alert('❌ Error deleting student: ' + error.message);
+        if (deleteError) {
+          console.error('❌ Delete error:', deleteError.message);
+          setError('Error deleting student: ' + deleteError.message);
           return;
         }
 
@@ -207,7 +220,7 @@ export default function VisaTracker() {
         await loadStudentsFromDatabase();
       } catch (err) {
         console.error('❌ Unexpected error:', err);
-        alert('❌ Error: ' + err.message);
+        setError('Error: ' + err.message);
       } finally {
         setLoading(false);
       }
@@ -223,6 +236,7 @@ export default function VisaTracker() {
       decision_date: '',
       notes: ''
     });
+    setError('');
   };
 
   const stats = calculateStats();
@@ -246,7 +260,7 @@ export default function VisaTracker() {
               <p className="text-blue-300">Crowdsourced visa timeline tracking system</p>
             </div>
             <button
-              onClick={() => setShowForm(true)}
+              onClick={() => { setShowForm(true); setError(''); }}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2"
             >
               <Plus size={20} /> Add Student
@@ -304,6 +318,13 @@ export default function VisaTracker() {
                 <button onClick={() => { setShowForm(false); resetForm(); setEditId(null); }} className="text-slate-400 hover:text-white">✕</button>
               </div>
 
+              {/* Error Message */}
+              {error && (
+                <div className="bg-red-500/20 border border-red-500 text-red-300 p-4 m-4 rounded-lg">
+                  ⚠️ {error}
+                </div>
+              )}
+
               <div className="p-6 space-y-4">
                 {/* Personal Info */}
                 <div className="grid grid-cols-2 gap-4">
@@ -312,7 +333,7 @@ export default function VisaTracker() {
                     <input type="text" name="name" value={formData.name} onChange={handleInputChange} placeholder="Full name" className="w-full" />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-slate-300 mb-2">Phone Number *</label>
+                    <label className="block text-sm font-semibold text-slate-300 mb-2">Phone Number (Optional)</label>
                     <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} placeholder="+92 300 1234567" className="w-full" />
                   </div>
                 </div>
@@ -326,8 +347,8 @@ export default function VisaTracker() {
                       <input type="date" name="joining_date" value={formData.joining_date} onChange={handleInputChange} className="w-full" />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-slate-300 mb-2">Interview Date</label>
-                      <input type="date" name="interview_date" value={formData.interview_date} onChange={handleInputChange} className="w-full" />
+                      <label className="block text-sm font-semibold text-slate-300 mb-2">Interview Date *</label>
+                      <input type="date" name="interview_date" value={formData.interview_date} onChange={handleInputChange} className="w-full" required />
                     </div>
                     <div className="col-span-2">
                       <label className="block text-sm font-semibold text-slate-300 mb-2">Decision Made Date</label>
@@ -455,7 +476,7 @@ export default function VisaTracker() {
                       filteredStudents.map(s => (
                         <tr key={s.id} className="border-b border-blue-500/10 hover:bg-slate-700/20 transition">
                           <td className="px-6 py-4 text-white font-semibold">{s.name}</td>
-                          <td className="px-6 py-4 text-slate-300 text-sm">{s.phone}</td>
+                          <td className="px-6 py-4 text-slate-300 text-sm">{s.phone || '-'}</td>
                           <td className="px-6 py-4 text-slate-300 text-sm">{s.joining_date || '-'}</td>
                           <td className="px-6 py-4 text-slate-300 text-sm">{s.interview_date || '-'}</td>
                           <td className="px-6 py-4 text-slate-300 text-sm">{s.decision_date || '-'}</td>
